@@ -1,0 +1,6 @@
+{
+  "name": "egg-bcs-ethereum",
+  "eggPlugin": {
+    "name": "bcsEthereum"
+  }
+}
