@@ -8,7 +8,7 @@ module.exports = appInfo => {
 
   // Tron NetWord Config
   config.tronConf = {
-    apiKey:'', // fetch it at https://www.trongrid.io/
+    apiKey:'6653687e-fedd-4631-b5df-dc430a4d5a7d', // fetch it at https://www.trongrid.io/
     /*
     TronGrid    ：https://www.trongrid.io/
     Get API Key ：https://www.trongrid.io/
@@ -19,7 +19,7 @@ module.exports = appInfo => {
     fullNode: 'https://api.trongrid.io',
     solNode: 'https://api.trongrid.io',
     eventNode: 'https://api.trongrid.io',
-    voteAddr: '4167E39013BE3CDD3814BED152D7439FB5B6791409' , // vote address in hex
+    voteAddr: '41BEAB998551416B02F6721129BB01B51FCECEBA08' , // vote address in hex
   };
 
   // private key here! KEEP SECRET!!!
@@ -32,8 +32,15 @@ module.exports = appInfo => {
     // 'TYK5jLgjdgU9nQd2EotYGfiGb4UEh5fFVT': true,
   }
 
-  // Tolerance rate when freeze. at least 1.003
-  config.toleRate = 1.003 ; 
+  // if have more that one address, some transfer will happen among them
+  // before transfer, double check address in case transfers to wrong address !!!!
+  config.selfAddr = {
+
+  }
+
+  config.repeatFreezeInSec = 3600*3 ; // will not freeze to this address if last freeze happend before this time 
+
+  config.toleRate = 1.003 ; // will freeze a lillte more energy in case energy rate changed! 
 
   config.paramConf = {
     tax_pencent: 0.2, // tax rate

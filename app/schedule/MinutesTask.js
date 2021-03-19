@@ -47,13 +47,45 @@ class MinuteTask extends Subscription {
           await this.getAddressInfo(this.app.WebList[i]) ;
         }
       }
-      await this.checkEnergeMarket() ;
+      if(!await this.checkBalance()) {
+        await this.checkEnergeMarket() ;
+      }
     }catch(error)
     {
       this.logger.info(`[MINUTE TASK] ERROR:${error}`);
     }finally{
       this.app.MinuteTaskIP = false ;
     }
+  }
+
+  async checkBalance() {
+    if(!this.app.energyRate || this.app.WebList.length == 0) {
+      return true;
+    }
+    let needTransfer = false ; // if transfer happened, then will refresh account at next tick!
+    let maxWeb = this.app.WebList[0] ;
+    for(let i = 1 ; i < this.app.WebList.length; i ++) {
+      if(this.app.WebList[i].curBalance > maxWeb.curBalance) {
+        maxWeb = this.app.WebList[i] ;
+      }
+    }
+    if(maxWeb.defaultAddress.base58 in this.app.config.selfAddr) {
+      for(let i = 0 ; i < this.app.WebList.length ; i ++) {
+        if(this.app.WebList[i].defaultAddress.base58 != maxWeb.defaultAddress.base58) {
+          if(this.app.WebList[i].curBalance > 200) {
+            let transAmount = this.app.WebList[i].curBalance-5 ;
+            let result = await this.app.WebList[i].trx.sendTransaction(maxWeb.defaultAddress.base58, this.app.WebList[i].toSun(transAmount)) ;
+            this.logger.info(`[${this.app.WebList[i].defaultAddress.base58}] Sent [${transAmount}] To [${maxWeb.defaultAddress.base58}]`, result) ;
+            this.app.WebList[i].curBalance -= transAmount ;
+            this.app.WebList[i].needRefresh = true ;
+            maxWeb.curBalance += transAmount ;
+            maxWeb.needRefresh = true ;
+            needTransfer = true;
+          }
+        }
+      }
+    }
+    return needTransfer ;
   }
 
   async getAddressInfo(tmpWeb) {
@@ -79,7 +111,11 @@ class MinuteTask extends Subscription {
     let ts = new Date().getTime() ;
     for (let i = 0 ; i < ret.delegated.sentDelegatedResource.length ; i ++) {
       let item = ret.delegated.sentDelegatedResource[i] ;
-      tmpWeb.freezeDict[item.to] = item.expire_time_for_energy ;
+      if(item.expire_time_for_energy < ts+(86400*3000-this.app.config.repeatFreezeInSec*1000)) {
+        tmpWeb.freezeDict[item.to] = item.expire_time_for_energy ;
+      } else {
+        frozenDetail += `[LATEST]`
+      }
       tmpWeb.frozenTotal += item.frozen_balance_for_energy ;
       frozenDetail += `To:[${item.to}], Amount:[${item.frozen_balance_for_energy}], Expire: [${item.expire_time_for_energy}]\n` ;
     }
@@ -179,58 +215,67 @@ class MinuteTask extends Subscription {
     if(this.app.WebList.length == 0) {
      return undefined ;
     }
-    let recvAddr58 = this.app.WebList[0].address.fromHex(order.receiver) ;
-    let trxMax = Math.ceil(order.left_amount*this.app.config.toleRate/this.app.energyRate) ; 
-    let trxMin = Math.ceil(order.min_amount*this.app.config.toleRate/this.app.energyRate) ; 
-    this.logger.info(`findBestWeb: ${order.order_id}, Receiver:${recvAddr58}, TRX_MAX: [${trxMax}], TRX_MIN: [${trxMin}]`) ;
-
-    let maxList = [] ; // can take whole order amount
-    let minList = [] ; // under whole order amount
-    for(let i = 0 ; i < this.app.WebList.length ; i ++) {
-      if(recvAddr58 != this.app.WebList[i].defaultAddress.base58) { // Not self
-        if(this.app.WebList[i].curBalance - 5 >= trxMax) {
-          maxList.push(this.app.WebList[i]) ;
-        } else if(this.app.WebList[i].curBalance - 5 >= trxMin) {
-          minList.push(this.app.WebList[i])
-        }
+    /*
+        { order_id: 13,
+          receiver: 'TFuAtcFpjsWvC4HgyqpYnvo3YNktHscCi6',
+          left_amount: 100,
+          left_payout: 8400,
+          min_amount: 100,
+          price: 35,
+          min_payout: 8400,
+          left_freeze: 4,
+          min_freeze: 4 }
+    */
+    let maxWeb = this.app.WebList[0] ;
+    for(let i = 1 ; i < this.app.WebList.length ; i ++) {
+      if(this.app.WebList[i].curBalance > maxWeb.curBalance) {
+        maxWeb = this.app.WebList[i] ;
       }
     }
+
+    let recvAddr58 = maxWeb.address.fromHex(order.receiver) ;
+    let trxMax = Math.ceil(order.left_amount*this.app.config.toleRate/this.app.energyRate) ;
+    let trxMin = Math.ceil(order.min_amount*this.app.config.toleRate/this.app.energyRate) ; 
+    this.logger.info(`findBestWeb: ${order.order_id}, receiver:${recvAddr58}, TRX_MAX: [${trxMax}], TRX_MIN: [${trxMin}]`) ;
+    if(maxWeb.curBalance - 5 < trxMin) { // lack of trx, return null
+      return undefined ;
+    }
     
-    if(maxList.length == 0 && minList.length == 0) {
+    if(recvAddr58 in maxWeb.freezeDict) { // already freezed
+      for(let i = 0 ; i < this.app.WebList.length; i ++) {
+        if(recvAddr58 in this.app.WebList[i].freezeDict) {
+          continue ;
+        }
+        // find next address not freeze!
+        if(this.app.WebList[i].defaultAddress.base58 in this.app.config.selfAddr) {
+          let transAmount = maxWeb.curBalance-5 ;
+          let result = await maxWeb.trx.sendTransaction(this.app.WebList[i].defaultAddress.base58, maxWeb.toSun(transAmount)) ;
+          this.logger.info(`[${maxWeb.defaultAddress.base58}] Sent [${transAmount}] To [${this.app.WebList[i].defaultAddress.base58}]`, result) ;
+          this.app.WebList[i].curBalance += transAmount ;
+          this.app.WebList[i].needRefresh = true ;
+          maxWeb.curBalance -= transAmount ;
+          maxWeb.needRefresh = true ;
+          return undefined ;
+        }
+      }
       return undefined ;
     }
 
-    let doWeb ;
-    if(maxList.length > 0) { // take whole, choose minimal 
-      doWeb = maxList[0] ;
-      for(let i = 1 ; i < maxList.length ; i ++) {
-        if(maxList[i].curBalance < doWeb.curBalance) {
-          doWeb = maxList[i] ;
-        }
-      } 
-    } else { // under whole, buy as much as you can!
-      doWeb = minList[0] ;
-      for(let i = 1 ; i < minList.length ; i ++) {
-        if(minList[i].curBalance > doWeb.curBalance) {
-          doWeb = minList[i] ;
-        }
-      } 
-    }
-
-    if(doWeb.curBalance >= trxMax+5) { 
+    //calculate freeze_trx and income etc
+    if(maxWeb.curBalance >= trxMax+5) { // whole order
       order.freeze_trx = trxMax ;
       order.web_max = order.left_amount ;
-      order.web_income = parseFloat(doWeb.fromSun(order.left_payout)) ;
-      return doWeb ;
-    } else if(doWeb.curBalance >= trxMin+5) {
-      let maxBal = doWeb.curBalance-5 ; 
+      order.web_income = parseFloat(maxWeb.fromSun(order.left_payout)) ;
+      return maxWeb ;
+    } else if(maxWeb.curBalance >= trxMin+5) {
+      let maxBal = maxWeb.curBalance-5 ; // part of the order
       let max_amount =  Math.floor(order.min_amount*maxBal/trxMin/100)*100 ;
 
-      let all_income = max_amount*order.price*3; // total income
-      order.freeze_trx = maxBal ;                // freeze TRXs
-      order.web_max = max_amount ;               // amount in energies
-      order.web_income = parseFloat(doWeb.fromSun(all_income-this.getTaxFee(all_income)))  ; // true income
-      return doWeb ;
+      let all_income = max_amount*order.price*3; // total income with tax
+      order.freeze_trx = maxBal ;
+      order.web_max = max_amount ;
+      order.web_income = parseFloat(maxWeb.fromSun(all_income-this.getTaxFee(all_income)))  ;
+      return maxWeb ;
     } else {
       return undefined ;
     }

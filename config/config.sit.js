@@ -6,22 +6,39 @@ module.exports = appInfo => {
   // use for cookie sign key, should change to your own and keep security
   config.keys = appInfo.name ;
 
-  // 波场测式服的配置
+  // Tron NetWord Config
   config.tronConf = {
+    apiKey:'', // fetch it at https://www.trongrid.io/
+    /*
+    TronGrid    ：https://www.trongrid.io/
+    Get API Key ：https://www.trongrid.io/
+    Use API Key ：https://cn.developers.tron.network/reference#%E5%A6%82%E4%BD%95%E4%BD%BF%E7%94%A8api-key 
+    Set API Key in Tronweb：https://cn.developers.tron.network/reference#tronweb-object
+    Tronweb Github: https://github.com/tronprotocol/tronweb
+    */
     fullNode: 'https://api.shasta.trongrid.io',
     solNode: 'https://api.shasta.trongrid.io',
     eventNode: 'https://api.shasta.trongrid.io',
-  }
+    voteAddr: '' , // vote address in hex
+  };
 
-  // 以下地址不取消质押
+  // private key here! KEEP SECRET!!!
+  config.pkList = [
+    '',
+  ]
+
   // Below address will keep freezed!
   config.fillAddr = {
     // 'TYK5jLgjdgU9nQd2EotYGfiGb4UEh5fFVT': true,
   }
 
-  // 容错，最少设置为1.003，否则有可能导致出售不足
-  // Tolerance rate when freeze. at least 1.003
-  config.toleRate = 1.003 ; 
+  // if have more that one address, some transfer will happen among them
+  // before transfer, double check address in case transfers to wrong address !!!!
+  config.selfAddr = {
+
+  }
+
+  config.toleRate = 1.003 ; // 容错
 
   config.paramConf = {
     tax_pencent: 0.2, // tax rate
@@ -29,7 +46,7 @@ module.exports = appInfo => {
   }
 
   config.logger = {
-    dir: '/data/NodeJSPre/logs/',
+    dir: '',  // logs directory
     level: 'DEBUG'
   }
 
